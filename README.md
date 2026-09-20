@@ -112,3 +112,56 @@ xcodebuild -project HouseholdApp.xcodeproj -scheme HouseholdApp \
 ```
 
 または Xcode 上で `⌘U`。
+
+⸻
+
+### リリース（ビルド〜App Store 審査提出）
+
+fastlane と `scripts/release/` で、テスト・ビルド・アップロード・ストア情報反映・審査提出を
+ローカルの Mac から実行します。CI からの実行は対象外です。
+
+#### 事前準備（初回のみ）
+
+1. `brew install fastlane xcodegen`、Xcode に Apple ID でサインイン（自動署名用）
+2. `store/settings.json` の `apple_id` と `team_id` を入力
+3. `fastlane setup_credentials` で Apple ID のパスワードとアプリ用パスワード
+   （appleid.apple.com で発行）を Keychain に登録（リポジトリには保存されません）
+4. アプリアイコン（1024x1024 の PNG、透過なし）を `AppIcon.appiconset` に置き、
+   `Contents.json` の `images` に `"filename"` を追記
+5. `store/review_contact.example.json` を `store/review_contact.local.json` にコピーして
+   審査連絡先を入力（Git 管理外）
+6. `store/metadata/ja/privacy_url.txt` と `support_url.txt` に URL を入力
+7. `store/name_candidates.txt` からアプリ名を選び、`fastlane create_app`
+   （名前が重複したら `fastlane create_app candidate:2` のように次の候補で再試行）
+
+#### 実行
+
+```sh
+fastlane release version:1.0.0   # 全段階を順に実行。成功済みの段階は飛ばして再開
+fastlane test | build | upload | screenshots | metadata | submit   # 単独実行
+fastlane validate                # 入力ルールと審査提出の前提だけ検査
+```
+
+- 段階の順序: test → build → upload → screenshots → metadata → submit。テストが失敗したらビルド以降は実行しません
+- ビルド番号は App Store Connect の最新番号 + 1 を自動採番します。`version:` は表示バージョンです
+- 審査提出の直前に内容を表示し、承認するまで提出しません。審査通過後は手動リリースです
+- 段階の成功記録は `build/release_state.json`（Git 管理外）。入力ファイルが変わった段階はやり直します
+- セッション Cookie が有効な間は認証を求めません。期限切れのときだけ 2FA コードをターミナルに入力します
+
+#### ストア情報
+
+`store/metadata/ja/` のテキストが App Store Connect の日本語ページに反映されます。
+文字数の上限（名前・サブタイトル 30、キーワード 100、説明文 4000）を超えると反映せずに止まります。
+審査情報の既定値（カテゴリ・年齢制限・暗号化・価格など）は `store/settings.json` にあります。
+「App のプライバシー」は `store/app_privacy_details.json`（現在は「データ収集なし」）を metadata 段階で回答・公開します。
+価格（無料）と公開地域（日本のみ）は metadata 段階で自動設定します（失敗時は提出前の表示で手作業を促します）。
+アプリは iPhone 専用（`TARGETED_DEVICE_FAMILY: "1"`）で、スクリーンショットは iPhone 6.9 インチのみです。
+スクリーンショットは `fastlane screenshots` がシミュレータで撮影し `store/screenshots/ja/` に置きます
+（`-ScreenshotSampleData` 起動引数でサンプルデータ入りのインメモリ状態で起動します）。
+
+
+#### スクリプトのテスト
+
+```sh
+python3 -m pytest scripts/release
+```

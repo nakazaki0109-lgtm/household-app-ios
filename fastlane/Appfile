@@ -1,0 +1,7 @@
+require "json"
+
+settings = JSON.parse(File.read(File.expand_path("../store/settings.json", __dir__)))
+
+app_identifier settings["bundle_id"]
+apple_id settings["apple_id"] unless settings["apple_id"].to_s.empty?
+team_id settings["team_id"] unless settings["team_id"].to_s.empty?

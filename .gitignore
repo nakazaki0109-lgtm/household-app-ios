@@ -18,3 +18,8 @@ HouseholdApp.xcodeproj/
 
 # macOS
 .DS_Store
+
+# Release automation (secrets and local state must never be committed)
+store/review_contact.local.json
+fastlane/report.xml
+fastlane/README.md

@@ -1,0 +1,316 @@
+# ビルド〜App Store 審査提出の自動化 (ローカル実行専用)。
+# 判定・検査・状態管理は scripts/release (Python) が担い、ここは fastlane の呼び出しと段階の順序だけを持つ。
+require "json"
+
+REPO_ROOT = File.expand_path("..", __dir__)
+SETTINGS = JSON.parse(File.read(File.join(REPO_ROOT, "store", "settings.json")))
+BUNDLE_ID = SETTINGS["bundle_id"]
+APPLE_ID = (ENV["FASTLANE_USER"].to_s.empty? ? SETTINGS["apple_id"] : ENV["FASTLANE_USER"]).to_s
+TEAM_ID = SETTINGS["team_id"].to_s
+APP_PASSWORD_SERVICE = "household-app-ios.app-specific-password"
+STAGE_ORDER = %w[test build upload screenshots metadata submit].freeze
+
+ENV["FASTLANE_USER"] = APPLE_ID unless APPLE_ID.empty?
+
+# ---- scripts/release の呼び出し ---------------------------------------------
+
+def release_cli(*args)
+  system("python3", "-m", "scripts.release.cli", *args, chdir: REPO_ROOT)
+end
+
+def release_cli!(*args, error:)
+  UI.user_error!(error) unless release_cli(*args)
+end
+
+def release_cli_output(*args)
+  output = IO.popen(["python3", "-m", "scripts.release.cli", *args], chdir: REPO_ROOT, &:read)
+  $?.success? ? output.strip : nil
+end
+
+def resolve_version(options)
+  return options[:version].to_s if options[:version]
+
+  project = File.read(File.join(REPO_ROOT, "project.yml"))
+  project[/MARKETING_VERSION:\s*"?([\d.]+)"?/, 1] || UI.user_error!("version:1.0.0 のようにバージョンを指定してください")
+end
+
+# ---- 認証 --------------------------------------------------------------------
+
+def keychain_has?(*command)
+  system("security", *command, out: File::NULL, err: File::NULL)
+end
+
+def guide_apple_id_login
+  release_cli!("require-settings", "apple_id", error: "Apple ID が未設定です")
+  hint = release_cli_output("session-hint", APPLE_ID)
+  UI.important(hint) if hint && !hint.empty?
+  return if keychain_has?("find-internet-password", "-s", "deliver.#{APPLE_ID}")
+
+  UI.important("Keychain に Apple ID のパスワードがありません。初回だけ入力を求められ、Keychain に保存されます（先に fastlane setup_credentials でも登録できます）")
+end
+
+def load_app_specific_password!
+  password = IO.popen(["security", "find-generic-password", "-a", APPLE_ID, "-s", APP_PASSWORD_SERVICE, "-w"],
+                      err: File::NULL, &:read).to_s.strip
+  UI.user_error!("アプリ用パスワードが Keychain にありません。fastlane setup_credentials で登録してください") if password.empty?
+  ENV["FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD"] = password
+end
+
+def require_signing_settings
+  release_cli!("require-settings", "apple_id", "team_id", error: "署名・認証の設定が足りません")
+end
+
+# ---- 各段階 ------------------------------------------------------------------
+
+def generate_project
+  UI.user_error!("xcodegen generate に失敗しました") unless system("xcodegen", "generate", chdir: REPO_ROOT)
+end
+
+def stage_test(_version)
+  generate_project
+  release_cli!("run-tests", error: "ユニットテストが失敗したため中断しました。ビルド以降は実行しません")
+end
+
+def stage_build(version)
+  require_signing_settings
+  guide_apple_id_login
+  generate_project
+  begin
+    latest = latest_testflight_build_number(app_identifier: BUNDLE_ID, username: APPLE_ID, version: version, initial_build_number: 0)
+  rescue StandardError => e
+    UI.user_error!("App Store Connect からビルド番号を取得できません（アプリ枠が未作成なら先に fastlane create_app）: #{e.message}")
+  end
+  build_number = latest.to_i + 1
+  UI.message("ビルド番号: #{latest} → #{build_number}")
+
+  build_app(
+    project: File.join(REPO_ROOT, "HouseholdApp.xcodeproj"),
+    scheme: "HouseholdApp",
+    configuration: "Release",
+    clean: true,
+    export_method: "app-store",
+    output_directory: File.join(REPO_ROOT, "build", "ipa"),
+    output_name: "HouseholdApp",
+    xcargs: "DEVELOPMENT_TEAM=#{TEAM_ID} MARKETING_VERSION=#{version} CURRENT_PROJECT_VERSION=#{build_number} -allowProvisioningUpdates",
+    export_team_id: TEAM_ID,
+    export_xcargs: "-allowProvisioningUpdates"
+  )
+  { "build_number" => build_number.to_s, "ipa" => lane_context[SharedValues::IPA_OUTPUT_PATH].to_s }
+end
+
+def stage_upload(version)
+  require_signing_settings
+  build_number = release_cli_output("state", "get", "build", "build_number")
+  ipa = release_cli_output("state", "get", "build", "ipa")
+  UI.user_error!("成功済みのビルドがありません。先に fastlane build を実行してください") if build_number.nil? || ipa.nil?
+
+  guide_apple_id_login
+  load_app_specific_password!
+  latest = latest_testflight_build_number(app_identifier: BUNDLE_ID, username: APPLE_ID, version: version, initial_build_number: 0).to_i
+  if latest >= build_number.to_i
+    UI.user_error!("ビルド番号 #{build_number} は App Store Connect に登録済みです（最新 #{latest}）。fastlane build からやり直すと #{latest + 1} で採番されます")
+  end
+
+  upload_to_testflight(
+    ipa: ipa,
+    username: APPLE_ID,
+    app_identifier: BUNDLE_ID,
+    skip_waiting_for_build_processing: false,
+    skip_submission: true,
+    distribute_external: false
+  )
+  { "build_number" => build_number }
+end
+
+def stage_screenshots(_version)
+  generate_project
+  release_cli!("screenshots", error: "スクリーンショットの撮影に失敗しました")
+end
+
+def deliver_options
+  JSON.parse(File.read(File.join(REPO_ROOT, "build", "deliver", "options.json")))
+end
+
+def automatic_release?
+  SETTINGS["app_store"]["release_method"] != "manual"
+end
+
+def symbolized(hash)
+  hash.each_with_object({}) { |(key, value), memo| memo[key.to_sym] = value }
+end
+
+# 電話番号を含むため、deliver に渡す分だけ読んで、リポジトリ配下の写しはすぐ消す。
+def read_and_delete_review_information(path)
+  return nil unless path && File.exist?(path)
+
+  info = symbolized(JSON.parse(File.read(path)))
+  File.delete(path)
+  info
+end
+
+# 無料・公開地域を settings.json の値にする。deliver の price_tier は未設定アプリで全地域を有効にするため使わない。
+# 失敗しても段階は止めず、"manual" を記録して提出前の要約で手作業の確認を促す。
+def apply_availability
+  app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+  UI.user_error!("アプリ #{BUNDLE_ID} が App Store Connect に見つかりません（先に fastlane create_app）") unless app
+
+  app_store = SETTINGS["app_store"]
+  app.update(
+    attributes: { availableInNewTerritories: false },
+    app_price_tier_id: app_store["price_tier"].to_s,
+    territory_ids: app_store["territories"]
+  )
+  UI.success("価格を無料、公開地域を #{app_store['territories'].join(', ')} に設定しました")
+  "applied"
+rescue StandardError => e
+  UI.important("価格・公開地域を自動設定できませんでした（#{e.message}）。App Store Connect の「価格および配信状況」で、無料・日本のみに設定してください")
+  "manual"
+end
+
+def stage_metadata(version)
+  release_cli!("validate-metadata", error: "ストア情報の入力ルール違反のため、App Store Connect には反映していません")
+  release_cli!("require-settings", "apple_id", error: "Apple ID が未設定です")
+  UI.user_error!("スクリーンショットがありません。fastlane screenshots を実行してください") if Dir.glob(File.join(REPO_ROOT, "store", "screenshots", "ja", "*.png")).empty?
+
+  release_cli!("stage-deliver", error: "ストア情報の準備に失敗しました")
+  options = deliver_options
+  review = read_and_delete_review_information(options["review_information_path"])
+  UI.important("審査連絡先が未入力のため、審査情報は反映しません（審査提出の前に必要です）") if review.nil?
+
+  guide_apple_id_login
+  deliver_args = {
+    username: APPLE_ID,
+    app_identifier: BUNDLE_ID,
+    app_version: version,
+    metadata_path: options["metadata_path"],
+    screenshots_path: File.join(REPO_ROOT, "store", "screenshots"),
+    languages: ["ja"],
+    overwrite_screenshots: true,
+    skip_binary_upload: true,
+    submit_for_review: false,
+    automatic_release: automatic_release?,
+    force: true,
+    run_precheck_before_submit: false,
+    app_rating_config_path: options["app_rating_config_path"],
+    primary_category: options["primary_category"],
+    copyright: options["copyright"]
+  }
+  deliver_args[:app_review_information] = review if review
+  deliver(**deliver_args)
+  availability = apply_availability
+  upload_app_privacy_details_to_app_store(
+    username: APPLE_ID,
+    app_identifier: BUNDLE_ID,
+    json_path: File.join(REPO_ROOT, "store", "app_privacy_details.json")
+  )
+  { "availability" => availability }
+end
+
+def stage_submit(version)
+  release_cli!("preflight-submit", error: "審査提出の前提が足りないため、提出しませんでした")
+  release_cli!("validate-metadata", error: "ストア情報の入力ルール違反のため、提出しませんでした")
+  unless release_cli("state", "is-done", "upload") && release_cli("state", "is-done", "metadata")
+    UI.user_error!("アップロードとストア情報反映が済んでいません（コード・ストア情報を変更した場合はやり直しが必要です）。fastlane upload / fastlane metadata を実行してください")
+  end
+
+  build_number = release_cli_output("state", "get", "upload", "build_number")
+  UI.user_error!("アップロード済みのビルド番号を取得できません。fastlane upload を実行してください") if build_number.nil?
+
+  availability = release_cli_output("state", "get", "metadata", "availability") || "manual"
+  release_cli!("summary", version, build_number, availability, error: "提出内容の要約を表示できないため、提出しませんでした")
+  UI.user_error!("承認されなかったため、審査には提出していません") unless UI.confirm("この内容で審査に提出します。よろしいですか？")
+
+  guide_apple_id_login
+  deliver(
+    username: APPLE_ID,
+    app_identifier: BUNDLE_ID,
+    app_version: version,
+    build_number: build_number,
+    skip_binary_upload: true,
+    skip_metadata: true,
+    skip_screenshots: true,
+    submit_for_review: true,
+    automatic_release: automatic_release?,
+    force: true,
+    run_precheck_before_submit: false,
+    submission_information: symbolized(SETTINGS["app_store"]["submission_information"]).merge(
+      export_compliance_uses_encryption: SETTINGS["app_store"]["uses_non_exempt_encryption"]
+    )
+  )
+  {}
+end
+
+def run_stage(stage, version)
+  UI.header("段階: #{stage}")
+  data = send("stage_#{stage}", version)
+  release_cli!("state", "mark", stage, JSON.generate(data || {}), error: "成功記録の保存に失敗しました")
+  release_cli("state", "reset") if stage == "submit" # 提出まで済んだら、次のリリースは最初からやり直す
+  UI.success("段階 #{stage} が成功しました")
+end
+
+# ---- レーン ------------------------------------------------------------------
+
+desc "ビルド〜審査提出を順に実行する。成功済みの段階は飛ばし、失敗した段階から再開する (例: fastlane release version:1.0.0)"
+lane :release do |options|
+  version = resolve_version(options)
+  release_cli!("state", "begin", version, error: "状態ファイルを初期化できません")
+  STAGE_ORDER.each do |stage|
+    if release_cli("state", "is-done", stage)
+      UI.success("段階 #{stage}: 成功済みのためスキップ")
+    else
+      run_stage(stage, version)
+    end
+  end
+  release_cli("state", "reset")
+  UI.success("審査に提出しました。App Store Connect のステータスが「審査待ち」になります。公開は手動です")
+end
+
+STAGE_ORDER.each do |stage|
+  desc "段階「#{stage}」だけを実行する (version:1.0.0 で表示バージョンを指定)"
+  lane stage.to_sym do |options|
+    version = resolve_version(options)
+    release_cli!("state", "begin", version, error: "状態ファイルを初期化できません")
+    run_stage(stage, version)
+  end
+end
+
+desc "バンドルIDの登録と App Store Connect のアプリ枠作成。既にあれば作成しない (candidate:2 で次のアプリ名候補)"
+lane :create_app do |options|
+  release_cli!("require-settings", "apple_id", error: "Apple ID が未設定です")
+  number = (options[:candidate] || 1).to_i
+  name = release_cli_output("name", number.to_s)
+  UI.user_error!("アプリ名の候補を取得できません。store/name_candidates.txt を確認してください") if name.nil? || name.empty?
+
+  guide_apple_id_login
+  begin
+    produce(
+      username: APPLE_ID,
+      app_identifier: BUNDLE_ID,
+      app_name: name,
+      language: "Japanese",
+      app_version: resolve_version(options),
+      sku: SETTINGS["sku"]
+    )
+  rescue StandardError => e
+    UI.important(release_cli_output("name-retry", number.to_s).to_s)
+    UI.user_error!("アプリ枠の作成に失敗しました（名前の重複が原因の場合は上の案内どおり次の候補で再試行）: #{e.message}")
+  end
+  release_cli!("name-apply", number.to_s, error: "アプリ名を store/metadata/ja/name.txt に反映できません") if options[:candidate]
+end
+
+desc "Apple ID のパスワードとアプリ用パスワードを Keychain に登録する (リポジトリには保存しない)"
+lane :setup_credentials do
+  release_cli!("require-settings", "apple_id", error: "Apple ID が未設定です")
+  UI.message("Apple ID のパスワードを入力してください（Keychain に保存されます）")
+  UI.user_error!("Apple ID パスワードの登録に失敗しました") unless system("security", "add-internet-password", "-a", APPLE_ID, "-s", "deliver.#{APPLE_ID}", "-U", "-w")
+  UI.message("アプリ用パスワード (appleid.apple.com で発行) を入力してください（Keychain に保存されます）")
+  UI.user_error!("アプリ用パスワードの登録に失敗しました") unless system("security", "add-generic-password", "-a", APPLE_ID, "-s", APP_PASSWORD_SERVICE, "-U", "-w")
+end
+
+desc "ストア情報の入力ルール検査と、審査提出の前提 (アイコン・審査連絡先・URL) の確認だけを行う"
+lane :validate do
+  metadata_ok = release_cli("validate-metadata")
+  submit_ok = release_cli("preflight-submit")
+  UI.user_error!("検査で問題が見つかりました") unless metadata_ok && submit_ok
+  UI.success("検査に問題はありません")
+end
