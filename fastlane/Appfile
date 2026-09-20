@@ -1,6 +1,9 @@
 require "json"
 
-settings = JSON.parse(File.read(File.expand_path("../store/settings.json", __dir__)))
+store_dir = File.expand_path("../store", __dir__)
+settings = JSON.parse(File.read(File.join(store_dir, "settings.json")))
+local_settings = File.join(store_dir, "settings.local.json")
+settings.merge!(JSON.parse(File.read(local_settings))) if File.exist?(local_settings)
 
 app_identifier settings["bundle_id"]
 apple_id settings["apple_id"] unless settings["apple_id"].to_s.empty?

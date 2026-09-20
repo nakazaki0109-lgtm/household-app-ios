@@ -28,7 +28,7 @@ def _cmd_preflight_submit(args) -> int:
 
 
 def _cmd_require_settings(args) -> int:
-    return _print_problems("store/settings.json に未入力の項目があります:",
+    return _print_problems("store/settings.local.json に未入力の項目があります:",
                            missing_settings(load_settings(), args.keys))
 
 

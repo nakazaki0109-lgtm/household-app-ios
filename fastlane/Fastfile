@@ -4,6 +4,8 @@ require "json"
 
 REPO_ROOT = File.expand_path("..", __dir__)
 SETTINGS = JSON.parse(File.read(File.join(REPO_ROOT, "store", "settings.json")))
+LOCAL_SETTINGS_FILE = File.join(REPO_ROOT, "store", "settings.local.json")
+SETTINGS.merge!(JSON.parse(File.read(LOCAL_SETTINGS_FILE))) if File.exist?(LOCAL_SETTINGS_FILE)
 BUNDLE_ID = SETTINGS["bundle_id"]
 APPLE_ID = (ENV["FASTLANE_USER"].to_s.empty? ? SETTINGS["apple_id"] : ENV["FASTLANE_USER"]).to_s
 TEAM_ID = SETTINGS["team_id"].to_s
@@ -102,7 +104,7 @@ def stage_upload(version)
   require_signing_settings
   build_number = release_cli_output("state", "get", "build", "build_number")
   ipa = release_cli_output("state", "get", "build", "ipa")
-  UI.user_error!("成功済みのビルドがありません。先に fastlane build を実行してください") if build_number.nil? || ipa.nil?
+  UI.user_error!("現在のコードに対する成功済みのビルドがありません（コードを変更した場合はやり直しが必要です）。先に fastlane build を実行してください") if build_number.nil? || ipa.nil?
 
   guide_apple_id_login
   load_app_specific_password!

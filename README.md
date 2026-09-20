@@ -123,7 +123,8 @@ fastlane と `scripts/release/` で、テスト・ビルド・アップロード
 #### 事前準備（初回のみ）
 
 1. `brew install fastlane xcodegen`、Xcode に Apple ID でサインイン（自動署名用）
-2. `store/settings.json` の `apple_id` と `team_id` を入力
+2. `store/settings.local.example.json` を `store/settings.local.json` にコピーして
+   `apple_id` と `team_id` を入力（Git 管理外。`store/settings.json` の同名キーを上書きします）
 3. `fastlane setup_credentials` で Apple ID のパスワードとアプリ用パスワード
    （appleid.apple.com で発行）を Keychain に登録（リポジトリには保存されません）
 4. アプリアイコン（1024x1024 の PNG、透過なし）を `AppIcon.appiconset` に置き、

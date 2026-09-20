@@ -93,3 +93,10 @@ def test_cli_state_mark_accepts_json_with_awkward_values(state, project, tmp_pat
     monkeypatch.setattr(cli, "StageState", partial(StageState, tmp_path / "state" / "release_state.json", project))
     cli.main(["state", "mark", "build", '{"ipa": "/a,b=c/App.ipa", "build_number": "4"}'])
     assert state.get("build", "ipa") == "/a,b=c/App.ipa"
+
+
+def test_get_returns_nothing_when_inputs_changed_after_the_stage(state, project):
+    state.mark_done("build", {"build_number": "3", "ipa": "/old/App.ipa"})
+    (project / "HouseholdApp" / "A.swift").write_text("let a = 2")
+    assert state.get("build", "ipa") is None
+    assert state.get("build", "build_number") is None

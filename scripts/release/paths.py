@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 STORE_DIR = ROOT / "store"
 SETTINGS_FILE = STORE_DIR / "settings.json"
+LOCAL_SETTINGS_NAME = "settings.local.json"
 METADATA_DIR = STORE_DIR / "metadata" / "ja"
 PRIVACY_DETAILS_FILE = STORE_DIR / "app_privacy_details.json"
 NAME_CANDIDATES_FILE = STORE_DIR / "name_candidates.txt"

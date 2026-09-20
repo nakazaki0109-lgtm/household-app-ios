@@ -68,8 +68,10 @@ class StageState:
         return bool(record) and record["fingerprint"] == fingerprint(stage, self.root)
 
     def get(self, stage: str, key: str):
-        record = self._load()["stages"].get(stage)
-        return None if not record else record.get("data", {}).get(key)
+        """現在の入力と一致する成功記録だけを返す。入力が変わっていれば古い成果物は返さない。"""
+        if not self.is_done(stage):
+            return None
+        return self._load()["stages"][stage].get("data", {}).get(key)
 
     def mark_done(self, stage: str, data: dict = None) -> None:
         state = self._load()

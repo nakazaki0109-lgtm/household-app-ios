@@ -1,8 +1,8 @@
 {
   "bundle_id": "com.nakazaki.householdapp",
   "sku": "household-app-ios",
-  "apple_id": "nakazaki.webnics@gmail.com",
-  "team_id": "3YD3MN3792",
+  "apple_id": "",
+  "team_id": "",
   "primary_language": "ja",
   "copyright": "2026 Ryoma Nakazaki",
   "app_store": {
