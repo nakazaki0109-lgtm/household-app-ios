@@ -12,6 +12,8 @@ struct MonthPickerBar: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
+            .accessibilityLabel("前の月")
+            .accessibilityIdentifier(AccessibilityID.MonthPicker.previousButton)
 
             Spacer()
 
@@ -26,6 +28,8 @@ struct MonthPickerBar: View {
             } label: {
                 Image(systemName: "chevron.right")
             }
+            .accessibilityLabel("次の月")
+            .accessibilityIdentifier(AccessibilityID.MonthPicker.nextButton)
         }
         .padding(.horizontal)
         .animation(.default, value: month)

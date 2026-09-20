@@ -4,12 +4,9 @@ import SwiftData
 /// Mirrors `Transactions\Index` (`/transactions`): a full list of all
 /// transactions, newest first.
 struct TransactionListView: View {
-    @Environment(\.modelContext) private var context
+    // context.fetch の結果は SwiftUI が変更を追跡しない。保存後に一覧が古いままになるので @Query で受ける。
+    @Query(sort: TransactionService.newestFirst) private var transactions: [Transaction]
     @State private var showingCreateTransaction = false
-
-    private var transactions: [Transaction] {
-        TransactionService.fetchAll(context: context)
-    }
 
     var body: some View {
         NavigationStack {
@@ -37,6 +34,7 @@ struct TransactionListView: View {
                     } label: {
                         Label("新規登録", systemImage: "plus")
                     }
+                    .accessibilityIdentifier(AccessibilityID.TransactionList.addButton)
                 }
             }
             .sheet(isPresented: $showingCreateTransaction) {

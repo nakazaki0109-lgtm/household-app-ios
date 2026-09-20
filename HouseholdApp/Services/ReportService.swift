@@ -29,7 +29,13 @@ enum ReportService {
     }
 
     static func monthlySummary(for month: TargetMonth, context: ModelContext) -> MonthlySummary {
-        let transactions = TransactionService.fetch(for: month, context: context)
+        monthlySummary(for: month, allTransactions: TransactionService.fetchAll(context: context))
+    }
+
+    /// `allTransactions` must be newest first (`TransactionService.newestFirst`).
+    /// Views pass their `@Query` result so SwiftUI redraws when transactions change.
+    static func monthlySummary(for month: TargetMonth, allTransactions: [Transaction]) -> MonthlySummary {
+        let transactions = TransactionService.filter(allTransactions, for: month)
 
         let incomeTotal = transactions.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
         let expenseTotal = transactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }

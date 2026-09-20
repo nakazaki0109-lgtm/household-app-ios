@@ -33,9 +33,11 @@ enum BudgetService {
     }
 
     /// Compares the month's budget against actual expense spending.
-    static func monthlyBudgetStatus(for month: TargetMonth, expenseTotal: Money, context: ModelContext) -> BudgetStatus {
-        let budgetAmount = Money(clamping: monthlyBudgetAmount(for: month, context: context) ?? 0)
-        return BudgetStatus(budgetAmount: budgetAmount, spentAmount: expenseTotal)
+    /// Views pass their `@Query` result as `monthlyBudgets` so SwiftUI redraws when a budget is saved.
+    static func monthlyBudgetStatus(for month: TargetMonth, expenseTotal: Money, monthlyBudgets: [MonthlyBudget]) -> BudgetStatus {
+        let monthValue = month.value
+        let amount = monthlyBudgets.first { $0.targetMonth == monthValue }?.amount ?? 0
+        return BudgetStatus(budgetAmount: Money(clamping: amount), spentAmount: expenseTotal)
     }
 
     // MARK: Per-category budgets
@@ -43,8 +45,14 @@ enum BudgetService {
     /// categoryId -> budgeted amount for `month` (only categories with a
     /// budget set are included), for prefilling the edit form.
     static func categoryBudgetAmounts(for month: TargetMonth, context: ModelContext) -> [PersistentIdentifier: Int] {
+        categoryBudgetAmounts(for: month, categoryBudgets: fetchCategoryBudgets(for: month, context: context))
+    }
+
+    /// Same, from already-fetched budgets (any month; other months are ignored).
+    static func categoryBudgetAmounts(for month: TargetMonth, categoryBudgets: [CategoryBudget]) -> [PersistentIdentifier: Int] {
+        let monthValue = month.value
         var result: [PersistentIdentifier: Int] = [:]
-        for budget in fetchCategoryBudgets(for: month, context: context) {
+        for budget in categoryBudgets where budget.targetMonth == monthValue {
             if let categoryId = budget.category?.persistentModelID {
                 result[categoryId] = budget.amount
             }
@@ -89,9 +97,23 @@ enum BudgetService {
     /// categories, even ones with no spending or no budget set (matching
     /// `CategoryBudgetComparisonService`).
     static func categoryComparisons(for month: TargetMonth, context: ModelContext) -> [CategoryComparison] {
-        let categories = CategoryService.fetchAll(context: context)
-        let budgetsByCategory = categoryBudgetAmounts(for: month, context: context)
-        let transactions = TransactionService.fetch(for: month, context: context)
+        categoryComparisons(
+            for: month,
+            categories: CategoryService.fetchAll(context: context),
+            categoryBudgets: (try? context.fetch(FetchDescriptor<CategoryBudget>())) ?? [],
+            allTransactions: TransactionService.fetchAll(context: context)
+        )
+    }
+
+    /// Views pass their `@Query` results so SwiftUI redraws when budgets or transactions change.
+    static func categoryComparisons(
+        for month: TargetMonth,
+        categories: [Category],
+        categoryBudgets: [CategoryBudget],
+        allTransactions: [Transaction]
+    ) -> [CategoryComparison] {
+        let budgetsByCategory = categoryBudgetAmounts(for: month, categoryBudgets: categoryBudgets)
+        let transactions = TransactionService.filter(allTransactions, for: month)
 
         var spentByCategory: [PersistentIdentifier: Int] = [:]
         for transaction in transactions where transaction.type == .expense {

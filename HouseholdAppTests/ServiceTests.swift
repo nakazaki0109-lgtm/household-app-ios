@@ -86,6 +86,51 @@ final class ServiceTests: XCTestCase {
         XCTAssertEqual(foodComparison?.status.isExceeded, false, "spent == budget must not count as exceeded")
     }
 
+    func testMonthlySummaryFromFetchedTransactionsMatchesContextVersionAndIgnoresOtherMonths() throws {
+        let month = try TargetMonth("2026-03")
+        let nextMonthDate = Calendar.current.date(byAdding: .month, value: 1, to: month.monthDate)!
+        try TransactionService.save(type: .expense, amount: 500, transactionDate: month.monthDate, category: nil, memo: nil, context: context)
+        try TransactionService.save(type: .expense, amount: 99999, transactionDate: nextMonthDate, category: nil, memo: nil, context: context)
+
+        let all = TransactionService.fetchAll(context: context)
+        let summary = ReportService.monthlySummary(for: month, allTransactions: all)
+
+        XCTAssertEqual(summary.expenseTotal.amount, 500)
+        XCTAssertEqual(summary.transactions.count, 1)
+        XCTAssertEqual(summary.expenseTotal, ReportService.monthlySummary(for: month, context: context).expenseTotal)
+    }
+
+    func testMonthlyBudgetStatusFromFetchedBudgetsUsesOnlyTheTargetMonth() throws {
+        let march = try TargetMonth("2026-03")
+        let april = try TargetMonth("2026-04")
+        try BudgetService.saveMonthlyBudget(month: march, amount: 100_000, context: context)
+        try BudgetService.saveMonthlyBudget(month: april, amount: 200_000, context: context)
+        let budgets = (try? context.fetch(FetchDescriptor<MonthlyBudget>())) ?? []
+
+        let status = BudgetService.monthlyBudgetStatus(for: march, expenseTotal: Money(clamping: 30_000), monthlyBudgets: budgets)
+        XCTAssertEqual(status.budgetAmount.amount, 100_000)
+
+        let noBudget = BudgetService.monthlyBudgetStatus(for: try TargetMonth("2026-05"), expenseTotal: Money(clamping: 1), monthlyBudgets: budgets)
+        XCTAssertEqual(noBudget.budgetAmount.amount, 0)
+    }
+
+    func testCategoryComparisonsFromFetchedModelsMatchesContextVersion() throws {
+        let food = Category(name: "食費")
+        context.insert(food)
+        let month = try TargetMonth("2026-03")
+        try BudgetService.saveCategoryBudget(category: food, month: month, amount: 10000, context: context)
+        try TransactionService.save(type: .expense, amount: 2500, transactionDate: month.monthDate, category: food, memo: nil, context: context)
+
+        let comparisons = BudgetService.categoryComparisons(
+            for: month,
+            categories: CategoryService.fetchAll(context: context),
+            categoryBudgets: (try? context.fetch(FetchDescriptor<CategoryBudget>())) ?? [],
+            allTransactions: TransactionService.fetchAll(context: context)
+        )
+        XCTAssertEqual(comparisons.first?.status.budgetAmount.amount, 10000)
+        XCTAssertEqual(comparisons.first?.status.spentAmount.amount, 2500)
+    }
+
     func testSeedDataServiceIsIdempotent() {
         SeedDataService.seedDefaultCategoriesIfNeeded(context: context)
         SeedDataService.seedDefaultCategoriesIfNeeded(context: context)

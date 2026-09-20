@@ -35,6 +35,7 @@ struct CategoryBudgetEditView: View {
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 120)
+                            .accessibilityIdentifier(AccessibilityID.CategoryBudgetEdit.amountField(categoryName: category.name))
                     }
                 }
             }
@@ -42,12 +43,14 @@ struct CategoryBudgetEditView: View {
             if let errorMessage {
                 Section {
                     Text(errorMessage).foregroundStyle(.red).font(.footnote)
+                        .accessibilityIdentifier(AccessibilityID.CategoryBudgetEdit.errorMessage)
                 }
             }
 
             if let savedMessage {
                 Section {
                     Text(savedMessage).foregroundStyle(.green).font(.footnote)
+                        .accessibilityIdentifier(AccessibilityID.CategoryBudgetEdit.savedMessage)
                 }
             }
         }
@@ -55,6 +58,7 @@ struct CategoryBudgetEditView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
+                    .accessibilityIdentifier(AccessibilityID.CategoryBudgetEdit.saveButton)
             }
         }
         .onAppear { loadAmounts() }

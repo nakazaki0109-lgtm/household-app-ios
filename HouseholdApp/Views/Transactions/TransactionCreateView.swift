@@ -29,16 +29,19 @@ struct TransactionCreateView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier(AccessibilityID.TransactionCreate.typePicker)
                 }
 
                 Section("金額") {
                     TextField("金額", text: $amountText)
                         .keyboardType(.numberPad)
+                        .accessibilityIdentifier(AccessibilityID.TransactionCreate.amountField)
                 }
 
                 Section("日付") {
                     DatePicker("日付", selection: $transactionDate, displayedComponents: .date)
                         .datePickerStyle(.compact)
+                        .accessibilityIdentifier(AccessibilityID.TransactionCreate.datePicker)
                 }
 
                 Section("カテゴリ") {
@@ -48,10 +51,12 @@ struct TransactionCreateView: View {
                             Text(category.name).tag(category as Category?)
                         }
                     }
+                    .accessibilityIdentifier(AccessibilityID.TransactionCreate.categoryPicker)
                 }
 
                 Section("メモ") {
                     TextField("メモ（任意）", text: $memo, axis: .vertical)
+                        .accessibilityIdentifier(AccessibilityID.TransactionCreate.memoField)
                 }
 
                 if let errorMessage {
@@ -59,6 +64,7 @@ struct TransactionCreateView: View {
                         Text(errorMessage)
                             .foregroundStyle(.red)
                             .font(.footnote)
+                            .accessibilityIdentifier(AccessibilityID.TransactionCreate.errorMessage)
                     }
                 }
             }
@@ -66,9 +72,11 @@ struct TransactionCreateView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
+                        .accessibilityIdentifier(AccessibilityID.TransactionCreate.cancelButton)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
+                        .accessibilityIdentifier(AccessibilityID.TransactionCreate.saveButton)
                 }
             }
         }

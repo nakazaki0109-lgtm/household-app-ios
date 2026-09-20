@@ -23,17 +23,20 @@ struct MonthlyBudgetEditView: View {
             Section("月予算") {
                 TextField("月予算", text: $amountText)
                     .keyboardType(.numberPad)
+                    .accessibilityIdentifier(AccessibilityID.MonthlyBudgetEdit.amountField)
             }
 
             if let errorMessage {
                 Section {
                     Text(errorMessage).foregroundStyle(.red).font(.footnote)
+                        .accessibilityIdentifier(AccessibilityID.MonthlyBudgetEdit.errorMessage)
                 }
             }
 
             if let savedMessage {
                 Section {
                     Text(savedMessage).foregroundStyle(.green).font(.footnote)
+                        .accessibilityIdentifier(AccessibilityID.MonthlyBudgetEdit.savedMessage)
                 }
             }
         }
@@ -41,6 +44,7 @@ struct MonthlyBudgetEditView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
+                    .accessibilityIdentifier(AccessibilityID.MonthlyBudgetEdit.saveButton)
             }
         }
         .onAppear { loadAmount() }

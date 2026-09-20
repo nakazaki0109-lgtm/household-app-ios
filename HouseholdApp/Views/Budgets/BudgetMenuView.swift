@@ -14,11 +14,13 @@ struct BudgetMenuView: View {
                 } label: {
                     Label("月予算設定", systemImage: "yensign.circle")
                 }
+                .accessibilityIdentifier(AccessibilityID.BudgetMenu.monthlyBudgetLink)
                 NavigationLink {
                     CategoryBudgetEditView(month: month)
                 } label: {
                     Label("カテゴリ別予算設定", systemImage: "chart.pie")
                 }
+                .accessibilityIdentifier(AccessibilityID.BudgetMenu.categoryBudgetLink)
             }
             .navigationTitle("予算設定")
         }

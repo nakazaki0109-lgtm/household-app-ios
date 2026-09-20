@@ -6,20 +6,30 @@ import SwiftData
 /// tiles, category expense breakdown, the month's transaction list, and the
 /// per-category budget comparison table.
 struct MonthlySummaryView: View {
-    @Environment(\.modelContext) private var context
+    // context.fetch の結果は SwiftUI が変更を追跡しない。保存後に画面が古いままになるので、
+    // 集計の元データは @Query で受ける。
+    @Query(sort: \Category.name) private var categories: [Category]
+    @Query(sort: TransactionService.newestFirst) private var transactions: [Transaction]
+    @Query private var monthlyBudgets: [MonthlyBudget]
+    @Query private var categoryBudgets: [CategoryBudget]
     @State private var month: TargetMonth = .current()
     @State private var showingCreateTransaction = false
 
     private var summary: ReportService.MonthlySummary {
-        ReportService.monthlySummary(for: month, context: context)
+        ReportService.monthlySummary(for: month, allTransactions: transactions)
     }
 
     private var budgetStatus: BudgetStatus {
-        BudgetService.monthlyBudgetStatus(for: month, expenseTotal: summary.expenseTotal, context: context)
+        BudgetService.monthlyBudgetStatus(for: month, expenseTotal: summary.expenseTotal, monthlyBudgets: monthlyBudgets)
     }
 
     private var categoryComparisons: [BudgetService.CategoryComparison] {
-        BudgetService.categoryComparisons(for: month, context: context)
+        BudgetService.categoryComparisons(
+            for: month,
+            categories: categories,
+            categoryBudgets: categoryBudgets,
+            allTransactions: transactions
+        )
     }
 
     var body: some View {
@@ -67,6 +77,7 @@ struct MonthlySummaryView: View {
                 Label("収支を登録", systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier(AccessibilityID.Summary.addTransactionButton)
 
             NavigationLink {
                 MonthlyBudgetEditView(month: month)
@@ -74,6 +85,7 @@ struct MonthlySummaryView: View {
                 Label("予算設定", systemImage: "yensign.circle")
             }
             .buttonStyle(.bordered)
+            .accessibilityIdentifier(AccessibilityID.Summary.monthlyBudgetLink)
 
             NavigationLink {
                 CategoryBudgetEditView(month: month)
@@ -81,6 +93,7 @@ struct MonthlySummaryView: View {
                 Label("カテゴリ別予算", systemImage: "chart.pie")
             }
             .buttonStyle(.bordered)
+            .accessibilityIdentifier(AccessibilityID.Summary.categoryBudgetLink)
         }
         .font(.subheadline)
     }
