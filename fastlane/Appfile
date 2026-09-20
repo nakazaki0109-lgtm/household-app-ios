@@ -8,3 +8,4 @@ settings.merge!(JSON.parse(File.read(local_settings))) if File.exist?(local_sett
 app_identifier settings["bundle_id"]
 apple_id settings["apple_id"] unless settings["apple_id"].to_s.empty?
 team_id settings["team_id"] unless settings["team_id"].to_s.empty?
+itc_team_id settings["itc_team_id"] unless settings["itc_team_id"].to_s.empty?
