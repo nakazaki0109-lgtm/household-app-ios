@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import deliver_stage, name_candidates, paths, preflight, screenshots, session, store_rules, summary, test_failures
+from . import deliver_stage, name_candidates, paths, preflight, screenshots, session, status, store_rules, summary, test_failures
 from .settings import load_settings, missing_settings
 from .stage_state import STAGES, StageState
 
@@ -36,6 +36,11 @@ def _cmd_session_hint(args) -> int:
     message = session.session_guidance(args.apple_id)
     if message:
         print(message)
+    return 0
+
+
+def _cmd_status(args) -> int:
+    print(json.dumps(status.release_status(args.version, StageState(), load_settings()), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -117,6 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     hint = sub.add_parser("session-hint")
     hint.add_argument("apple_id")
     hint.set_defaults(func=_cmd_session_hint)
+
+    stat = sub.add_parser("status")
+    stat.add_argument("version")
+    stat.set_defaults(func=_cmd_status)
 
     summ = sub.add_parser("summary")
     summ.add_argument("version")

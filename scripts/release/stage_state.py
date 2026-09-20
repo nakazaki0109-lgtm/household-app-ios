@@ -57,6 +57,9 @@ class StageState:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def recorded_version(self):
+        return self._load().get("version")
+
     def begin(self, version: str) -> None:
         """バージョンが変わったら、前バージョンの記録を捨てる。"""
         data = self._load()
