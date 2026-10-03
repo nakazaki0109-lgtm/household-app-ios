@@ -1,11 +1,11 @@
 ---
 name: reviewing-changes
-description: "差分（作業ツリーの変更、ブランチ、PR、指定ファイル）を、バグ・セキュリティ・プロジェクトの設計基準（DDDの層、Swiftのコンパイル時間）・requirements.md との適合の観点でレビューし、重要度付きの指摘だけを返す（ファイルは書き換えない）。「レビューして」「差分を見て」「PRを確認して」「実装後にチェックして」と言われた時、コミットやPRの前に確認したい時に使う。"
+description: "差分（作業ツリーの変更、ブランチ、PR）または指定ファイルの現状を、バグ・セキュリティ・プロジェクトの設計基準（DDDの層、Swiftのコンパイル時間）・対象要件書との適合の観点でレビューし、重要度付きの指摘だけを返す（ファイルは書き換えない）。「レビューして」「差分を見て」「PRを確認して」「実装後にチェックして」と言われた時、コミットやPRの前に確認したい時に使う。"
 ---
 
 # Reviewing Changes
 
-差分をレビューして、重要度付きの指摘を返す。レビューだけを行い、コードは直さない。直すかどうかはユーザーが決めるため。
+差分または指定ファイルの現状をレビューして、重要度付きの指摘を返す。レビューだけを行い、コードは直さない。直すかどうかはユーザーが決めるため。
 
 コードを書いた本人は、自分の意図を知っているせいで見落としをする。観点ごとに、別のサブエージェントに読ませる。
 
@@ -13,13 +13,22 @@ description: "差分（作業ツリーの変更、ブランチ、PR、指定フ�
 
 ### 1. レビュー対象を決める
 
-ユーザーの指定に従う。指定が無ければ、作業ツリーの変更 (未コミット + 未追跡) を対象にする。ブランチや PR なら、比較元を確認する (通常は `main`)。
+ユーザーの指定に従い、対象モードを最初に決める。
+
+- 差分レビュー: 指定がなければ作業ツリーの変更（未コミット + 未追跡）。ブランチやPRは比較元を特定する（通常は `main`）。
+- 現状レビュー: 指定されたファイルの全文が対象。Git差分がなくてもレビューする。ディレクトリ指定なら対象ファイルを列挙して `--files` に渡す。
+
+ユーザー指定または前工程から引き継いだ要件書のパスを使う。指定がなければ依頼内容と既存の要件書を照合し、対象を一意に決められない場合だけ確認する。別の要件書を暗黙に `requirements.md` へ置き換えない。以降の `<要件ファイル>` はこのパスを表し、コマンド・サブエージェント・最終報告に同じパスを渡す。コマンドはリポジトリ直下で実行する。
+要件書が存在しないレビューでは要件適合の観点を省く。
 
 ```bash
-python3 .claude/skills/reviewing-changes/scripts/review_scope.py [--base main]
+# 作業ツリーの差分。ブランチの場合は --base main を追加
+python3 .claude/skills/reviewing-changes/scripts/review_scope.py --requirements "<要件ファイル>"
+# 指定ファイルの現状（--base と同時指定しない）
+python3 .claude/skills/reviewing-changes/scripts/review_scope.py --files path/to/file1 path/to/file2 --requirements "<要件ファイル>"
 ```
 
-変更ファイルの一覧、層 (Domain / Models / Services / Views) への分類、依存の向きの違反 (Domain が SwiftUI を import している、など) が出る。`変更はありません` と出たら、その旨を伝えて終える。`--base` は、コミット済みのブランチの変更だけを対象にする。
+要件書がない場合は `--requirements` を省略する。対象一覧、層、依存の向きの違反が出る。差分モードで「変更はありません」と出た場合だけ終了する。`--base` はコミット済みのブランチ変更だけを対象にする。
 
 ### 2. 観点を選ぶ
 
@@ -27,13 +36,13 @@ python3 .claude/skills/reviewing-changes/scripts/review_scope.py [--base main]
 |---|---|
 | 正確性とセキュリティ | 常に |
 | 設計基準 | Swift のアプリコード (Domain / Models / Services / Views) の変更があるとき |
-| requirements.md との適合 | `review_scope.py` が `requirements.md: あり` と出し、差分がその要件に関係するとき |
+| 対象要件書との適合 | `review_scope.py` が対象要件書を「あり」と出し、レビュー対象がその要件に関係するとき |
 
 ### 3. レビュー役を並列に起動する
 
 `agents/reviewer.md` を読み、その指示に沿って、選んだ観点ごとにサブエージェントを1件ずつ、同時に起動する。観点どうしは互いに依存せず、並列にすると速いため。
 
-渡すもの: 担当する観点、`review_scope.py` の出力、差分の取得方法、`references/review-perspectives.md` のパス。
+渡すもの: 担当する観点、`review_scope.py` の出力、対象モード、差分の取得方法または全文を読むファイルの一覧、対象要件書のパス（ない場合はその旨）、`references/review-perspectives.md` のパス。
 
 差分が非常に小さい (数行) ときは、サブエージェントを使わず、`references/review-perspectives.md` を読んで自分でレビューしてよい。
 
@@ -54,7 +63,7 @@ python3 .claude/skills/reviewing-changes/scripts/review_scope.py [--base main]
 ### 指摘 (高 N 件 / 中 N 件 / 低 N 件)
 - [重要度: 高] ファイル:行 — 問題 / 失敗シナリオ / 修正案
 
-### requirements.md との適合 (該当時のみ)
+### 対象要件書との適合 (該当時のみ)
 - F1: 満たす — 根拠
 
 ### 確認したが問題のなかった点
@@ -67,4 +76,4 @@ python3 .claude/skills/reviewing-changes/scripts/review_scope.py [--base main]
 
 - `references/review-perspectives.md` — 各観点の基準、指摘の質を保つ規則、重要度の付け方。ステップ3でレビュー役に渡す (自分でレビューするときは自分で読む)
 - `agents/reviewer.md` — レビュー役のサブエージェントへの指示。ステップ3で読む
-- `.claude/skills/implementing-requirements/references/` — 設計基準の観点が参照する DDD とコンパイル時間の基準 (`references/review-perspectives.md` から参照される)
+- `docs/development/` — 設計基準の観点が参照する DDD とコンパイル時間の基準 (`references/review-perspectives.md` から参照される)

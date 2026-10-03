@@ -31,7 +31,7 @@ IMPORT_RE = re.compile(
     r"^[ \t]*(?:@\w+[ \t]+)*import[ \t]+(?:(?:struct|class|enum|protocol|typealias|func|var|let)[ \t]+)?([A-Za-z_]\w*)",
     re.MULTILINE,
 )
-STATUS_LABELS = {"A": "追加", "M": "変更", "D": "削除", "R": "改名", "C": "複製", "U": "未追跡"}
+STATUS_LABELS = {"A": "追加", "M": "変更", "D": "削除", "R": "改名", "C": "複製", "U": "未追跡", "F": "現状"}
 
 
 @dataclass(frozen=True)
@@ -104,12 +104,14 @@ def find_import_violations(change: Change, content: str) -> list[Violation]:
 
 
 def render_report(
-    changes: list[Change], violations: list[Violation], has_requirements: bool, target: str
+    changes: list[Change], violations: list[Violation], has_requirements: bool, target: str,
+    requirements_path: Path | None = Path("requirements.md"),
 ) -> str:
     if not changes:
         return f"レビュー対象: {target}\n変更はありません。\n"
     swift_app = [c for c in changes if c.layer is not None]
-    lines = [f"レビュー対象: {target}", f"変更ファイル: {len(changes)} 件 (うち Swift のアプリコード {len(swift_app)} 件)\n"]
+    label = "対象ファイル" if any(c.status == "F" for c in changes) else "変更ファイル"
+    lines = [f"レビュー対象: {target}", f"{label}: {len(changes)} 件 (うち Swift のアプリコード {len(swift_app)} 件)\n"]
     for c in changes:
         layer = c.layer or ("Test" if c.is_test else "-")
         lines.append(f"- [{STATUS_LABELS.get(c.status, c.status)}] {c.path} ({layer})")
@@ -119,7 +121,7 @@ def render_report(
         lines.extend(f"- {v.path}: {v.layer} 層が {v.module} を import している" for v in violations)
     else:
         lines.append("依存の向きの違反 (機械検出): なし")
-    lines.append(f"requirements.md: {'あり' if has_requirements else 'なし'}")
+    lines.append(f"{requirements_path}: {'あり' if has_requirements else 'なし'}" if requirements_path else "要件書: 指定なし")
     return "\n".join(lines) + "\n"
 
 
@@ -146,12 +148,23 @@ def collect_changes(base: str | None) -> tuple[list[Change], str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="レビュー対象の変更を洗い出す")
-    parser.add_argument("--base", help="比較元のブランチ/コミット (例: main)。省略時は作業ツリーの変更")
-    parser.add_argument("--requirements", default="requirements.md", type=Path)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--base", help="比較元のブランチ/コミット (例: main)。省略時は作業ツリーの変更")
+    mode.add_argument("--files", nargs="+", type=Path, help="Git差分によらず全文をレビューするファイル")
+    parser.add_argument("--requirements", type=Path, help="対象要件書。省略時は要件適合を省く")
     args = parser.parse_args(argv)
 
     try:
-        changes, target = collect_changes(args.base)
+        if args.requirements is not None and not args.requirements.is_file():
+            raise RuntimeError(f"要件書が見つかりません: {args.requirements}")
+        if args.files:
+            for path in args.files:
+                if not path.is_file():
+                    raise RuntimeError(f"対象ファイルが見つかりません: {path}")
+            changes = merge_changes([Change(str(path), "F") for path in args.files])
+            target = "指定ファイルの現状 (全文)"
+        else:
+            changes, target = collect_changes(args.base)
     except RuntimeError as e:
         print(f"エラー: {e}", file=sys.stderr)
         return 2
@@ -162,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         if change.status != "D" and path.is_file():
             violations.extend(find_import_violations(change, path.read_text(encoding="utf-8", errors="replace")))
 
-    print(render_report(changes, violations, args.requirements.exists(), target), end="")
+    print(render_report(changes, violations, args.requirements is not None, target, args.requirements), end="")
     return 1 if violations else 0
 
 

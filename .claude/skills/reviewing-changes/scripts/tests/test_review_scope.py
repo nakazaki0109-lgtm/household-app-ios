@@ -138,3 +138,38 @@ def test_main_returns_2_when_git_fails(monkeypatch, capsys):
 
     assert main(["--base", "nope"]) == 2
     assert "bad revision" in capsys.readouterr().err
+
+
+def test_explicit_files_review_without_git_changes(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "unchanged.md").write_text("existing content")
+    def unexpected_git(base):
+        pytest.fail("full-file review must not query git changes")
+    monkeypatch.setattr(review_scope, "collect_changes", unexpected_git)
+    assert main(["--files", "unchanged.md"]) == 0
+    output = capsys.readouterr().out
+    assert "[現状] unchanged.md" in output
+    assert "変更はありません" not in output
+
+
+def test_custom_requirements_path_is_reported(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "app.md").write_text("app")
+    (tmp_path / "requirements-mobile.md").write_text("requirements")
+    assert main(["--files", "app.md", "--requirements", "requirements-mobile.md"]) == 0
+    output = capsys.readouterr().out
+    assert "requirements-mobile.md: あり" in output
+    assert "requirements.md: あり" not in output
+
+
+@pytest.mark.parametrize("args", [["--files", "missing.md"], ["--requirements", "missing.md"]])
+def test_missing_explicit_input_fails(tmp_path, monkeypatch, capsys, args):
+    monkeypatch.chdir(tmp_path)
+    assert main(args) == 2
+    assert "見つかりません" in capsys.readouterr().err
+
+
+def test_files_and_base_are_mutually_exclusive():
+    with pytest.raises(SystemExit) as error:
+        main(["--files", "README.md", "--base", "main"])
+    assert error.value.code == 2

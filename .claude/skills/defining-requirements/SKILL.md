@@ -17,10 +17,10 @@ description: "曖昧な要件を、実装に入れる仕様になるまでプロ
 
 ### 2. requirements.md を用意する
 
-置き場所は、ユーザーの指定がなければリポジトリ直下の `requirements.md`。既にあれば内容を読み、続きから再開する（上書きしない）。なければ作る:
+ユーザー指定または前工程で扱っている要件書のパスを使う。指定がなければ既存の要件書と依頼内容を照合し、対象が曖昧な場合だけ確認する。新規で保存先の指定がなければリポジトリ直下の `requirements.md` を使う。以降の `<要件ファイル>` は選んだパスに置き換え、コマンドはリポジトリ直下で実行する。既にあれば内容を読み、続きから再開する（上書きしない）。なければ作る:
 
 ```bash
-python3 .claude/skills/defining-requirements/scripts/requirements_doc.py requirements.md init --title "<機能・アプリの名前>"
+python3 .claude/skills/defining-requirements/scripts/requirements_doc.py "<要件ファイル>" init --title "<機能・アプリの名前>"
 ```
 
 書式を毎回考えないために、作成・追記・確認はすべてこのスクリプトで行う。セクションは `purpose` `in-scope` `out-of-scope` `functional` `acceptance` `constraints` `open` の7つ。
@@ -38,7 +38,7 @@ python3 .claude/skills/defining-requirements/scripts/requirements_doc.py require
 答えをもらうたびに、まとめずにその場で追記する。書き忘れや、会話が長引いたときの取りこぼしを防ぐため。
 
 ```bash
-python3 .claude/skills/defining-requirements/scripts/requirements_doc.py requirements.md add <セクション> "<1行の内容>"
+python3 .claude/skills/defining-requirements/scripts/requirements_doc.py "<要件ファイル>" add <セクション> "<1行の内容>"
 ```
 
 「まだ決められない」と言われた項目は `open` に追記する。後で決まったら、決まった内容を該当セクションへ `add` してから `resolve <番号>` で `open` から消す。
@@ -48,10 +48,12 @@ python3 .claude/skills/defining-requirements/scripts/requirements_doc.py require
 質問が尽きたと思ったら、次を実行する。
 
 ```bash
-python3 .claude/skills/defining-requirements/scripts/requirements_doc.py requirements.md check
+python3 .claude/skills/defining-requirements/scripts/requirements_doc.py "<要件ファイル>" check
 ```
 
-`実装に入れる状態` と出たら、`requirements.md` の内容をユーザーに見せて、認識が合っているか確認する。不足が出たら、その不足を埋める質問に戻る。
+`実装に入れる状態` と出たら、選んだ要件書のパスと内容をユーザーに見せて、認識が合っているか確認する。不足が出たら、その不足を埋める質問に戻る。
+
+実装・レビューへ引き継ぐときは、確定した要件書のパスを明記する。
 
 ユーザーが確認するまで、実装には着手しない。要件の認識合わせが済む前に作り始めると、このスキルを使う意味がなくなるため。
 

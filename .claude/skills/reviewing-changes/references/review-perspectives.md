@@ -5,7 +5,7 @@
 - 共通: 指摘の質を保つ規則
 - 観点1: 正確性とセキュリティ
 - 観点2: 設計基準
-- 観点3: requirements.md との適合
+- 観点3: 対象要件書との適合
 - 重要度の付け方
 
 ## 共通: 指摘の質を保つ規則
@@ -14,7 +14,7 @@
 
 - 指摘は、該当コードを実際に読んで確認してから書く。「〜かもしれない」だけの推測は書かない。
 - 指摘には失敗シナリオを付ける。「どの入力・状態で、何が起きて、どう困るか」を具体的に書けないものは、指摘にしない。
-- 差分に含まれない既存コードの問題は、今回の変更が悪化させた場合だけ指摘する。
+- 差分レビューでは、差分外の既存問題は今回の変更が悪化させた場合だけ指摘する。現状レビューでは、指定ファイル内の既存問題も対象とする。
 - 好み (命名、コメントの量、書き方の流儀) は指摘しない。基準に反する点だけを指摘する。
 
 ## 観点1: 正確性とセキュリティ
@@ -46,8 +46,8 @@ Swift / SwiftUI / SwiftData のコードで、特に見る点。
 
 次の2ファイルを読み、その基準に照らす。
 
-- `.claude/skills/implementing-requirements/references/ddd-principles.md` — 層の置き場所、依存の向き、Aggregate などを導入する条件、用語の扱い
-- `.claude/skills/implementing-requirements/references/swift-compile-time.md` — コンパイル時間のコーディング規約、モジュール分割の条件
+- `docs/development/ddd-principles.md` — 層の置き場所、依存の向き、Aggregate などを導入する条件、用語の扱い
+- `docs/development/swift-compile-time.md` — コンパイル時間のコーディング規約、モジュール分割の条件
 
 指定された Swift のアプリコードだけが対象。スクリプトや設定ファイルには適用しない。
 
@@ -59,14 +59,14 @@ Swift / SwiftUI / SwiftData のコードで、特に見る点。
 - 要件の用語と、型名・変数名がずれていないか
 - コンパイル時間の規約: 複雑な式、型注釈の欠如、大きい `body`、複雑な `#Predicate`、`final` / `private` の欠如
 
-## 観点3: requirements.md との適合
+## 観点3: 対象要件書との適合
 
-`requirements.md` がある場合だけ担当する。
+対象要件書がある場合だけ担当する。
 
-1. `python3 .claude/skills/implementing-requirements/scripts/requirements_tasks.py requirements.md` で、番号付きの機能要件 (F)・受け入れ条件 (A)・制約 (C)・スコープ外 (X) を得る。
-2. 差分に関係する項目それぞれについて、「満たす / 満たさない / 検証不能」を、根拠 (ファイル:行、テスト名) 付きで判定する。読んで確認できないものは「検証不能」にする。
+1. `python3 .claude/skills/implementing-requirements/scripts/requirements_tasks.py "<要件ファイル>"` で、番号付きの機能要件 (F)・受け入れ条件 (A)・制約 (C)・スコープ外 (X) を得る。
+2. レビュー対象に関係する項目それぞれについて、「満たす / 満たさない / 検証不能」を、根拠 (ファイル:行、テスト名) 付きで判定する。読んで確認できないものは「検証不能」にする。
 3. X (スコープ外) が実装されていれば指摘する。
-4. 差分と無関係な項目は、判定せず省く。全項目を埋める必要はない (実装の網羅確認は implementing-requirements の役割)。
+4. レビュー対象と無関係な項目は、判定せず省く。全項目を埋める必要はない (実装の網羅確認は implementing-requirements の役割)。
 
 ## 重要度の付け方
 
